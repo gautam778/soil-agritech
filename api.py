@@ -129,26 +129,45 @@ def chat_ai(data: ChatInput):
         if groq_client is None:
             return success({"reply": "Groq not initialized"})
 
-        print("📩 USER:", data.message)
+        user_msg = data.message.strip().lower()
+        print("📩 USER:", user_msg)
+
+        # 🔥 OPTIONAL: instant reply for greetings (best UX)
+        if user_msg in ["hi", "hello", "hey"]:
+            return success({"reply": "Hello! 👋 How can I help you today?"})
 
         completion = groq_client.chat.completions.create(
-    model="llama-3.1-8b-instant",
-    messages=[
-        {
-            "role": "system",
-            "content": """
+            model="llama-3.1-8b-instant",  # ✅ fast + cheap model
+            messages=[
+                {
+                    "role": "system",
+                    "content": """
 You are an agriculture assistant.
 
-- Keep replies short (max 2-3 lines)
-- Be helpful and practical
-- Expand only if user asks detailed question
+Rules:
+- Keep replies SHORT (max 2–3 lines).
+- Be clear, practical, and easy to understand.
+- Only give detailed answers if user asks specific questions.
+- Focus on soil, crops, fertilizers, irrigation, pests.
 """
-        },
-        {
-            "role": "user",
-            "content": data.message
-        }
-    ],
-    temperature=0.5,
-    max_tokens=100
-)
+                },
+                {
+                    "role": "user",
+                    "content": data.message
+                }
+            ],
+            temperature=0.4,   # 🔥 more consistent replies
+            max_tokens=80      # 🔥 shorter output
+        )
+
+        reply = completion.choices[0].message.content.strip()
+
+        print("🤖 REPLY:", reply)
+
+        return success({"reply": reply})
+
+    except Exception as e:
+        print("❌ GROQ ERROR:", e)
+        return success({
+            "reply": "AI is temporarily unavailable. Please try again."
+        })
