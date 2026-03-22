@@ -12,7 +12,7 @@ print("🚀 STARTING AGRITECH API")
 app = Flask(__name__)
 CORS(app)
 
-# ---------------- DEBUG PORT (IMPORTANT) ----------------
+# ---------------- DEBUG PORT ----------------
 print("PORT:", os.environ.get("PORT"))
 
 # ---------------- CONFIG ----------------
@@ -20,25 +20,33 @@ class Config:
     GROQ_API_KEY = os.getenv("GROQ_API_KEY")
     WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
     WEATHER_BASE_URL = "https://api.openweathermap.org/data/2.5"
-    MODEL_PATH = "model/microbial_model.pkl"
+
+    BASE_DIR = os.path.dirname(__file__)
+    MODEL_PATH = os.path.join(BASE_DIR, "model/microbial_model.pkl")
 
 config = Config()
 
-# ---------------- LOAD MODEL ----------------
+# ---------------- LOAD MODEL (SAFE) ----------------
+model = None
 try:
-    model = joblib.load(config.MODEL_PATH)
-    print("✅ Model loaded successfully")
+    if os.path.exists(config.MODEL_PATH):
+        model = joblib.load(config.MODEL_PATH)
+        print("✅ Model loaded successfully")
+    else:
+        print("⚠️ Model file not found at:", config.MODEL_PATH)
 except Exception as e:
     print("❌ Model loading failed:", e)
-    model = None
 
 # ---------------- INIT GROQ ----------------
+groq_client = None
 try:
-    groq_client = Groq(api_key=config.GROQ_API_KEY) if config.GROQ_API_KEY else None
-    print("✅ Groq AI ready" if groq_client else "⚠️ Groq not configured")
+    if config.GROQ_API_KEY:
+        groq_client = Groq(api_key=config.GROQ_API_KEY)
+        print("✅ Groq AI ready")
+    else:
+        print("⚠️ Groq not configured")
 except Exception as e:
     print("⚠️ Groq init failed:", e)
-    groq_client = None
 
 # ---------------- SESSION ----------------
 session_data = {}
@@ -53,3 +61,8 @@ def home():
         "status": "running",
         "message": "AgriTech API is live 🚀"
     }
+
+# ---------------- RUN (IMPORTANT FOR RENDER) ----------------
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
