@@ -4,9 +4,10 @@ import pandas as pd
 import requests
 import os
 import joblib
+from groq import Groq
 
 # ---------------- INIT ----------------
-app = FastAPI(title="AgriTech API", version="2.0")
+app = FastAPI(title="AgriTech API", version="3.0")
 
 # ---------------- LOAD MODEL ----------------
 model = None
@@ -23,6 +24,16 @@ else:
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
 WEATHER_BASE_URL = "https://api.openweathermap.org/data/2.5"
 
+# ---------------- GROQ INIT ----------------
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+groq_client = None
+if GROQ_API_KEY:
+    groq_client = Groq(api_key=GROQ_API_KEY)
+    print("✅ Groq connected")
+else:
+    print("⚠️ GROQ_API_KEY missing")
+
 # ---------------- REQUEST MODELS ----------------
 class SoilInput(BaseModel):
     ph: float
@@ -37,6 +48,7 @@ class WeatherInput(BaseModel):
 
 class ChatInput(BaseModel):
     message: str
+    language: str = "en"   # 🔥 added for multilingual
 
 # ---------------- RESPONSE ----------------
 def success(data):
@@ -79,7 +91,7 @@ def weather_forecast(data: WeatherInput):
             return success({"forecast": [], "error": "API key missing"})
 
         res = requests.get(
-            f"{WEATHER_BASE_URL}/forecast",  # 🔥 CHANGED
+            f"{WEATHER_BASE_URL}/forecast",
             params={
                 "lat": data.latitude,
                 "lon": data.longitude,
@@ -93,7 +105,6 @@ def weather_forecast(data: WeatherInput):
             return success({"forecast": [], "error": "Weather API failed"})
 
         d = res.json()
-
         forecast = []
 
         for item in d.get("list", []):
@@ -111,11 +122,45 @@ def weather_forecast(data: WeatherInput):
         print("❌ WEATHER ERROR:", e)
         return success({"forecast": []})
 
-# ---------------- CHAT ----------------
+# ---------------- CHAT (GROQ AI) ----------------
 @app.post("/chat-ai")
 def chat_ai(data: ChatInput):
     try:
-        return success({"reply": f"You said: {data.message}"})
+        if groq_client is None:
+            return success({
+                "reply": "AI service not configured. Please try later."
+            })
+
+        user_message = data.message
+
+        completion = groq_client.chat.completions.create(
+            model="llama3-8b-8192",
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"""
+You are an expert agriculture assistant.
+
+- Help farmers with soil, crops, fertilizers, irrigation, pests, and weather.
+- Give simple, practical, and accurate advice.
+- Reply in {data.language} language.
+- Keep answers short and useful.
+"""
+                },
+                {
+                    "role": "user",
+                    "content": user_message
+                }
+            ],
+            temperature=0.7,
+        )
+
+        reply = completion.choices[0].message.content.strip()
+
+        return success({"reply": reply})
+
     except Exception as e:
         print("❌ CHAT ERROR:", e)
-        return success({"reply": "Error processing request"})
+        return success({
+            "reply": "AI is currently unavailable. Please try again later."
+        })
