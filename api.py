@@ -132,27 +132,23 @@ def chat_ai(data: ChatInput):
         print("📩 USER:", data.message)
 
         completion = groq_client.chat.completions.create(
-            model="llama-3.1-8b-instant",   # 🔥 IMPORTANT CHANGE
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are an agriculture expert helping farmers."
-                },
-                {
-                    "role": "user",
-                    "content": data.message
-                }
-            ],
-            temperature=0.7,
-            max_tokens=300
-        )
+    model="llama-3.1-8b-instant",
+    messages=[
+        {
+            "role": "system",
+            "content": """
+You are an agriculture assistant.
 
-        reply = completion.choices[0].message.content.strip()
-
-        print("🤖 REPLY:", reply)
-
-        return success({"reply": reply})
-
-    except Exception as e:
-        print("❌ GROQ ERROR:", e)   # 🔥 THIS IS KEY
-        return success({"reply": str(e)})  # TEMP DEBUG
+- Keep replies short (max 2-3 lines)
+- Be helpful and practical
+- Expand only if user asks detailed question
+"""
+        },
+        {
+            "role": "user",
+            "content": data.message
+        }
+    ],
+    temperature=0.5,
+    max_tokens=100
+)
