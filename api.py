@@ -51,45 +51,58 @@ def register_routes(app, model, groq_client, config, session_data):
             print("WEATHER ERROR:", e)
             return None
 
-    # ---------------- WEEKLY WEATHER ----------------
+    # ---------------- WEEKLY WEATHER (FIXED) ----------------
     def get_weekly_weather(lat, lon):
-    try:
-        response = requests.get(
-            "https://api.openweathermap.org/data/3.0/onecall",
-            params={
-                "lat": lat,
-                "lon": lon,
-                "appid": config.WEATHER_API_KEY,
-                "units": "metric"
-            },
-            timeout=3
-        )
+        try:
+            response = requests.get(
+                f"{config.WEATHER_BASE_URL}/forecast",  # ✅ SAFE FREE API
+                params={
+                    "lat": lat,
+                    "lon": lon,
+                    "appid": config.WEATHER_API_KEY,
+                    "units": "metric"
+                },
+                timeout=3
+            )
 
-        print("Weekly status:", response.status_code)
-        print("Weekly response:", response.text)
+            print("Forecast status:", response.status_code)
 
-        if response.status_code != 200:
+            if response.status_code != 200:
+                print("Forecast error:", response.text)
+                return []
+
+            data = response.json()
+
+            # 🔥 Convert 3-hour data → daily summary
+            daily_map = {}
+
+            for item in data.get("list", []):
+                date = item["dt_txt"].split(" ")[0]
+
+                if date not in daily_map:
+                    daily_map[date] = {
+                        "temps": [],
+                        "conditions": []
+                    }
+
+                daily_map[date]["temps"].append(item["main"]["temp"])
+                daily_map[date]["conditions"].append(item["weather"][0]["description"])
+
+            forecast = []
+
+            for date, values in list(daily_map.items())[:7]:
+                forecast.append({
+                    "date": date,
+                    "day": datetime.strptime(date, "%Y-%m-%d").strftime("%A"),
+                    "temp_day": round(sum(values["temps"]) / len(values["temps"]), 1),
+                    "condition": values["conditions"][0]
+                })
+
+            return forecast
+
+        except Exception as e:
+            print("WEEKLY ERROR:", e)
             return []
-
-        data = response.json()
-        daily = data.get("daily", [])[:7]
-
-        forecast = []
-
-        for day in daily:
-            forecast.append({
-                "day": datetime.fromtimestamp(day["dt"]).strftime("%A"),
-                "temp_day": round(day["temp"]["day"], 1),
-                "temp_night": round(day["temp"]["night"], 1),
-                "humidity": day["humidity"],
-                "condition": day["weather"][0]["description"]
-            })
-
-        return forecast
-
-    except Exception as e:
-        print("WEEKLY ERROR:", e)
-        return []
 
     # ---------------- ROUTES ----------------
 
