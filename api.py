@@ -5,7 +5,6 @@ from datetime import datetime
 
 def register_routes(app, model, groq_client, config, session_data):
 
-    # ---------------- RESPONSE HELPERS ----------------
     def success(data):
         return jsonify({
             "status": "success",
@@ -19,11 +18,9 @@ def register_routes(app, model, groq_client, config, session_data):
             "error": msg
         }), 400
 
-    # ---------------- WEATHER FUNCTION ----------------
+    # ---------------- WEATHER ----------------
     def get_weather_data(lat, lon):
         try:
-            print("Fetching weather for:", lat, lon)
-
             response = requests.get(
                 f"{config.WEATHER_BASE_URL}/weather",
                 params={
@@ -32,11 +29,10 @@ def register_routes(app, model, groq_client, config, session_data):
                     "appid": config.WEATHER_API_KEY,
                     "units": "metric"
                 },
-                timeout=2  # 🔥 faster
+                timeout=2
             )
 
             if response.status_code != 200:
-                print("Weather API failed:", response.text)
                 return None
 
             data = response.json()
@@ -59,7 +55,6 @@ def register_routes(app, model, groq_client, config, session_data):
     def health():
         return success({"message": "API healthy"})
 
-    # 🌱 SOIL PREDICTION (SAFE VERSION)
     @app.route("/predict", methods=["POST"])
     def predict_soil():
         if model is None:
@@ -68,7 +63,6 @@ def register_routes(app, model, groq_client, config, session_data):
         data = request.json or {}
 
         try:
-            # 🔥 SAFE INPUTS (no crash)
             ph = float(data.get("ph", 0))
             n = float(data.get("n", 0))
             p = float(data.get("p", 0))
@@ -91,13 +85,8 @@ def register_routes(app, model, groq_client, config, session_data):
 
         except Exception as e:
             print("PREDICT ERROR:", e)
+            return success({"microbial_score": 0.5})
 
-            # 🔥 fallback instead of crash
-            return success({
-                "microbial_score": 0.5
-            })
-
-    # 🌦 WEATHER
     @app.route("/weather-location", methods=["POST"])
     def weather_today():
         data = request.json or {}
@@ -111,8 +100,6 @@ def register_routes(app, model, groq_client, config, session_data):
         weather = get_weather_data(lat, lon)
 
         if not weather:
-            print("Using fallback weather")
-
             weather = {
                 "city": "Unknown",
                 "temperature": 25,
@@ -123,7 +110,6 @@ def register_routes(app, model, groq_client, config, session_data):
 
         return success({"weather": weather})
 
-    # 🤖 CHAT AI
     @app.route("/chat-ai", methods=["POST"])
     def chat_ai():
         data = request.json or {}
@@ -147,10 +133,9 @@ def register_routes(app, model, groq_client, config, session_data):
 
         except Exception as e:
             print("CHAT ERROR:", e)
-
             return success({"reply": "AI error"})
 
-    # ---------------- GLOBAL ERROR HANDLER ----------------
+    # ---------------- GLOBAL ERROR ----------------
     @app.errorhandler(Exception)
     def handle_exception(e):
         print("GLOBAL ERROR:", str(e))

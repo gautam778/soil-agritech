@@ -12,6 +12,9 @@ print("🚀 STARTING AGRITECH API")
 app = Flask(__name__)
 CORS(app)
 
+# ---------------- DEBUG PORT (IMPORTANT) ----------------
+print("PORT:", os.environ.get("PORT"))
+
 # ---------------- CONFIG ----------------
 class Config:
     GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -43,15 +46,10 @@ session_data = {}
 # ---------------- REGISTER ROUTES ----------------
 register_routes(app, model, groq_client, config, session_data)
 
-# ---------------- HEALTH CHECK (IMPORTANT) ----------------
+# ---------------- HEALTH CHECK ----------------
 @app.route("/", methods=["GET"])
 def home():
     return {
         "status": "running",
         "message": "AgriTech API is live 🚀"
     }
-
-# ---------------- RUN (FOR LOCAL ONLY) ----------------
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))  # 🔥 dynamic port
-    app.run(host="0.0.0.0", port=port)
