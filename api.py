@@ -50,8 +50,8 @@ def register_routes(app, model, groq_client, config, session_data):
         except Exception as e:
             print("WEATHER ERROR:", e)
             return None
-        
-    # ---------------- WEEKLY WEATHER (FIXED) ----------------
+
+    # ---------------- WEEKLY WEATHER ----------------
     def get_weekly_weather(lat, lon):
         try:
             response = requests.get(
@@ -70,38 +70,25 @@ def register_routes(app, model, groq_client, config, session_data):
                 return []
 
             data = response.json()
-
-            if "list" not in data:
-                print("Invalid response:", data)
-                return []
-
             daily_map = {}
 
-            for item in data["list"]:
-                try:
-                    date = item.get("dt_txt", "").split(" ")[0]
+            for item in data.get("list", []):
+                date = item.get("dt_txt", "").split(" ")[0]
 
-                    if not date:
-                        continue
-
-                    temp = item.get("main", {}).get("temp")
-                    condition = item.get("weather", [{}])[0].get("description", "")
-
-                    if temp is None:
-                        continue
-
-                    if date not in daily_map:
-                        daily_map[date] = {
-                            "temps": [],
-                            "conditions": []
-                        }
-
-                    daily_map[date]["temps"].append(temp)
-                    daily_map[date]["conditions"].append(condition)
-
-                except Exception as e:
-                    print("Item error:", e)
+                if not date:
                     continue
+
+                temp = item.get("main", {}).get("temp")
+                condition = item.get("weather", [{}])[0].get("description", "")
+
+                if temp is None:
+                    continue
+
+                if date not in daily_map:
+                    daily_map[date] = {"temps": [], "conditions": []}
+
+                daily_map[date]["temps"].append(temp)
+                daily_map[date]["conditions"].append(condition)
 
             forecast = []
 
@@ -115,7 +102,6 @@ def register_routes(app, model, groq_client, config, session_data):
                         "temp_day": round(avg_temp, 1),
                         "condition": values["conditions"][0] if values["conditions"] else "clear sky"
                     })
-
                 except Exception as e:
                     print("Day error:", e)
                     continue
@@ -128,44 +114,14 @@ def register_routes(app, model, groq_client, config, session_data):
 
     # ---------------- ROUTES ----------------
 
+    @app.route("/", methods=["GET"])
+    def home():
+        return success({"message": "AgriTech API is live 🚀"})
+
     @app.route("/health", methods=["GET"])
     def health():
         return success({"message": "API healthy"})
 
-    # 🌱 SOIL PREDICTION
-    @app.route("/predict", methods=["POST"])
-    def predict_soil():
-        if model is None:
-            return error("Model not loaded")
-
-        data = request.json or {}
-
-        try:
-            ph = float(data.get("ph", 0))
-            n = float(data.get("n", 0))
-            p = float(data.get("p", 0))
-            k = float(data.get("k", 0))
-            temp = float(data.get("temperature", 0))
-
-            input_df = pd.DataFrame([{
-                "ph": ph,
-                "n": n,
-                "p": p,
-                "k": k,
-                "temperature": temp
-            }])
-
-            score = float(model.predict(input_df)[0])
-
-            return success({
-                "microbial_score": round(score, 3)
-            })
-
-        except Exception as e:
-            print("PREDICT ERROR:", e)
-            return success({"microbial_score": 0.5})
-
-    # 🌦 CURRENT WEATHER
     @app.route("/weather-location", methods=["POST"])
     def weather_today():
         data = request.json or {}
@@ -189,7 +145,6 @@ def register_routes(app, model, groq_client, config, session_data):
 
         return success({"weather": weather})
 
-    # 📅 WEEKLY FORECAST
     @app.route("/weather-weekly", methods=["POST"])
     def weather_weekly():
         data = request.json or {}
@@ -209,7 +164,27 @@ def register_routes(app, model, groq_client, config, session_data):
 
         return success({"forecast": forecast})
 
-    # 🤖 CHAT AI
+    @app.route("/predict", methods=["POST"])
+    def predict_soil():
+        try:
+            data = request.json or {}
+
+            input_df = pd.DataFrame([{
+                "ph": float(data.get("ph", 0)),
+                "n": float(data.get("n", 0)),
+                "p": float(data.get("p", 0)),
+                "k": float(data.get("k", 0)),
+                "temperature": float(data.get("temperature", 0))
+            }])
+
+            score = float(model.predict(input_df)[0])
+
+            return success({"microbial_score": round(score, 3)})
+
+        except Exception as e:
+            print("PREDICT ERROR:", e)
+            return success({"microbial_score": 0.5})
+
     @app.route("/chat-ai", methods=["POST"])
     def chat_ai():
         data = request.json or {}
