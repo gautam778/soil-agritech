@@ -50,12 +50,12 @@ def register_routes(app, model, groq_client, config, session_data):
         except Exception as e:
             print("WEATHER ERROR:", e)
             return None
-
+        
     # ---------------- WEEKLY WEATHER (FIXED) ----------------
     def get_weekly_weather(lat, lon):
         try:
             response = requests.get(
-                f"{config.WEATHER_BASE_URL}/forecast",  # ✅ SAFE FREE API
+                f"{config.WEATHER_BASE_URL}/forecast",
                 params={
                     "lat": lat,
                     "lon": lon,
@@ -65,38 +65,60 @@ def register_routes(app, model, groq_client, config, session_data):
                 timeout=3
             )
 
-            print("Forecast status:", response.status_code)
-
             if response.status_code != 200:
-                print("Forecast error:", response.text)
+                print("Forecast API error:", response.text)
                 return []
 
             data = response.json()
 
-            # 🔥 Convert 3-hour data → daily summary
+            if "list" not in data:
+                print("Invalid response:", data)
+                return []
+
             daily_map = {}
 
-            for item in data.get("list", []):
-                date = item["dt_txt"].split(" ")[0]
+            for item in data["list"]:
+                try:
+                    date = item.get("dt_txt", "").split(" ")[0]
 
-                if date not in daily_map:
-                    daily_map[date] = {
-                        "temps": [],
-                        "conditions": []
-                    }
+                    if not date:
+                        continue
 
-                daily_map[date]["temps"].append(item["main"]["temp"])
-                daily_map[date]["conditions"].append(item["weather"][0]["description"])
+                    temp = item.get("main", {}).get("temp")
+                    condition = item.get("weather", [{}])[0].get("description", "")
+
+                    if temp is None:
+                        continue
+
+                    if date not in daily_map:
+                        daily_map[date] = {
+                            "temps": [],
+                            "conditions": []
+                        }
+
+                    daily_map[date]["temps"].append(temp)
+                    daily_map[date]["conditions"].append(condition)
+
+                except Exception as e:
+                    print("Item error:", e)
+                    continue
 
             forecast = []
 
             for date, values in list(daily_map.items())[:7]:
-                forecast.append({
-                    "date": date,
-                    "day": datetime.strptime(date, "%Y-%m-%d").strftime("%A"),
-                    "temp_day": round(sum(values["temps"]) / len(values["temps"]), 1),
-                    "condition": values["conditions"][0]
-                })
+                try:
+                    avg_temp = sum(values["temps"]) / len(values["temps"])
+
+                    forecast.append({
+                        "date": date,
+                        "day": datetime.strptime(date, "%Y-%m-%d").strftime("%A"),
+                        "temp_day": round(avg_temp, 1),
+                        "condition": values["conditions"][0] if values["conditions"] else "clear sky"
+                    })
+
+                except Exception as e:
+                    print("Day error:", e)
+                    continue
 
             return forecast
 
