@@ -19,9 +19,11 @@ def register_routes(app, model, groq_client, config, session_data):
             "error": msg
         }), 400
 
-    # ---------------- CURRENT WEATHER ----------------
+    # ---------------- WEATHER FUNCTION ----------------
     def get_weather_data(lat, lon):
         try:
+            print("Fetching weather for:", lat, lon)
+
             response = requests.get(
                 f"{config.WEATHER_BASE_URL}/weather",
                 params={
@@ -30,8 +32,10 @@ def register_routes(app, model, groq_client, config, session_data):
                     "appid": config.WEATHER_API_KEY,
                     "units": "metric"
                 },
-                timeout=3
+                timeout=3   # 🔥 FAST timeout
             )
+
+            print("Weather API status:", response.status_code)
 
             if response.status_code != 200:
                 return None
@@ -48,45 +52,6 @@ def register_routes(app, model, groq_client, config, session_data):
 
         except Exception as e:
             print("WEATHER ERROR:", e)
-            return None
-
-    # ---------------- WEEKLY WEATHER ----------------
-    def get_weekly_weather(lat, lon):
-        try:
-            response = requests.get(
-                f"{config.WEATHER_BASE_URL}/onecall",
-                params={
-                    "lat": lat,
-                    "lon": lon,
-                    "exclude": "current,minutely,hourly,alerts",
-                    "appid": config.WEATHER_API_KEY,
-                    "units": "metric"
-                },
-                timeout=5
-            )
-
-            if response.status_code != 200:
-                return None
-
-            data = response.json()
-            daily = data.get("daily", [])[:7]
-
-            forecast = []
-
-            for day in daily:
-                forecast.append({
-                    "date": datetime.fromtimestamp(day["dt"]).strftime("%Y-%m-%d"),
-                    "day": datetime.fromtimestamp(day["dt"]).strftime("%A"),
-                    "temp_day": round(day["temp"]["day"], 1),
-                    "temp_night": round(day["temp"]["night"], 1),
-                    "humidity": day["humidity"],
-                    "condition": day["weather"][0]["description"]
-                })
-
-            return forecast
-
-        except Exception as e:
-            print("WEEKLY WEATHER ERROR:", e)
             return None
 
     # ---------------- ROUTES ----------------
@@ -121,7 +86,7 @@ def register_routes(app, model, groq_client, config, session_data):
         except Exception as e:
             return error(f"Prediction failed: {str(e)}")
 
-    # 🌦 CURRENT WEATHER
+    # 🌦 WEATHER (🔥 FIXED)
     @app.route("/weather-location", methods=["POST"])
     def weather_today():
         data = request.json or {}
@@ -134,7 +99,10 @@ def register_routes(app, model, groq_client, config, session_data):
 
         weather = get_weather_data(lat, lon)
 
+        # 🔥 FALLBACK → NEVER FAIL
         if not weather:
+            print("Using fallback weather")
+
             weather = {
                 "city": "Unknown",
                 "temperature": 25,
@@ -144,27 +112,6 @@ def register_routes(app, model, groq_client, config, session_data):
             }
 
         return success({"weather": weather})
-
-    # 📅 WEEKLY FORECAST (NEW)
-    @app.route("/weather-weekly", methods=["POST"])
-    def weather_weekly():
-        data = request.json or {}
-
-        lat = data.get("latitude")
-        lon = data.get("longitude")
-
-        if lat is None or lon is None:
-            return error("Latitude & Longitude required")
-
-        forecast = get_weekly_weather(lat, lon)
-
-        if not forecast:
-            forecast = [
-                {"day": "Today", "temp_day": 30, "condition": "clear sky"},
-                {"day": "Tomorrow", "temp_day": 31, "condition": "cloudy"}
-            ]
-
-        return success({"forecast": forecast})
 
     # 🤖 CHAT AI
     @app.route("/chat-ai", methods=["POST"])
