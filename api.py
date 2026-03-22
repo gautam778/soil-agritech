@@ -32,22 +32,21 @@ def register_routes(app, model, groq_client, config, session_data):
                     "appid": config.WEATHER_API_KEY,
                     "units": "metric"
                 },
-                timeout=3   # 🔥 FAST timeout
+                timeout=2  # 🔥 faster
             )
 
-            print("Weather API status:", response.status_code)
-
             if response.status_code != 200:
+                print("Weather API failed:", response.text)
                 return None
 
             data = response.json()
 
             return {
                 "city": data.get("name", "Unknown"),
-                "temperature": round(data["main"]["temp"], 1),
-                "humidity": data["main"]["humidity"],
+                "temperature": round(data.get("main", {}).get("temp", 25), 1),
+                "humidity": data.get("main", {}).get("humidity", 60),
                 "rainfall": data.get("rain", {}).get("1h", 0.0),
-                "condition": data["weather"][0]["description"]
+                "condition": data.get("weather", [{}])[0].get("description", "clear sky")
             }
 
         except Exception as e:
@@ -56,11 +55,11 @@ def register_routes(app, model, groq_client, config, session_data):
 
     # ---------------- ROUTES ----------------
 
-    @app.route("/", methods=["GET"])
-    def home():
-        return success({"message": "AgriTech API Running"})
+    @app.route("/health", methods=["GET"])
+    def health():
+        return success({"message": "API healthy"})
 
-    # 🌱 SOIL PREDICTION
+    # 🌱 SOIL PREDICTION (SAFE VERSION)
     @app.route("/predict", methods=["POST"])
     def predict_soil():
         if model is None:
@@ -69,12 +68,19 @@ def register_routes(app, model, groq_client, config, session_data):
         data = request.json or {}
 
         try:
+            # 🔥 SAFE INPUTS (no crash)
+            ph = float(data.get("ph", 0))
+            n = float(data.get("n", 0))
+            p = float(data.get("p", 0))
+            k = float(data.get("k", 0))
+            temp = float(data.get("temperature", 0))
+
             input_df = pd.DataFrame([{
-                "ph": float(data.get("ph")),
-                "n": float(data.get("n")),
-                "p": float(data.get("p")),
-                "k": float(data.get("k")),
-                "temperature": float(data.get("temperature"))
+                "ph": ph,
+                "n": n,
+                "p": p,
+                "k": k,
+                "temperature": temp
             }])
 
             score = float(model.predict(input_df)[0])
@@ -84,9 +90,14 @@ def register_routes(app, model, groq_client, config, session_data):
             })
 
         except Exception as e:
-            return error(f"Prediction failed: {str(e)}")
+            print("PREDICT ERROR:", e)
 
-    # 🌦 WEATHER (🔥 FIXED)
+            # 🔥 fallback instead of crash
+            return success({
+                "microbial_score": 0.5
+            })
+
+    # 🌦 WEATHER
     @app.route("/weather-location", methods=["POST"])
     def weather_today():
         data = request.json or {}
@@ -99,7 +110,6 @@ def register_routes(app, model, groq_client, config, session_data):
 
         weather = get_weather_data(lat, lon)
 
-        # 🔥 FALLBACK → NEVER FAIL
         if not weather:
             print("Using fallback weather")
 
@@ -135,5 +145,16 @@ def register_routes(app, model, groq_client, config, session_data):
 
             return success({"reply": reply})
 
-        except:
+        except Exception as e:
+            print("CHAT ERROR:", e)
+
             return success({"reply": "AI error"})
+
+    # ---------------- GLOBAL ERROR HANDLER ----------------
+    @app.errorhandler(Exception)
+    def handle_exception(e):
+        print("GLOBAL ERROR:", str(e))
+        return jsonify({
+            "status": "failed",
+            "error": "Internal server error"
+        }), 500

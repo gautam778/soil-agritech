@@ -33,9 +33,9 @@ except Exception as e:
 try:
     groq_client = Groq(api_key=config.GROQ_API_KEY) if config.GROQ_API_KEY else None
     print("✅ Groq AI ready" if groq_client else "⚠️ Groq not configured")
-except:
+except Exception as e:
+    print("⚠️ Groq init failed:", e)
     groq_client = None
-    print("⚠️ Groq init failed")
 
 # ---------------- SESSION ----------------
 session_data = {}
@@ -43,6 +43,15 @@ session_data = {}
 # ---------------- REGISTER ROUTES ----------------
 register_routes(app, model, groq_client, config, session_data)
 
-# ---------------- RUN ----------------
+# ---------------- HEALTH CHECK (IMPORTANT) ----------------
+@app.route("/", methods=["GET"])
+def home():
+    return {
+        "status": "running",
+        "message": "AgriTech API is live 🚀"
+    }
+
+# ---------------- RUN (FOR LOCAL ONLY) ----------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    port = int(os.environ.get("PORT", 10000))  # 🔥 dynamic port
+    app.run(host="0.0.0.0", port=port)
