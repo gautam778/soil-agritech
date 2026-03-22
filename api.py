@@ -127,40 +127,32 @@ def weather_forecast(data: WeatherInput):
 def chat_ai(data: ChatInput):
     try:
         if groq_client is None:
-            return success({
-                "reply": "AI service not configured. Please try later."
-            })
+            return success({"reply": "Groq not initialized"})
 
-        user_message = data.message
+        print("📩 USER:", data.message)
 
         completion = groq_client.chat.completions.create(
-            model="llama3-8b-8192",
+            model="llama-3.1-8b-instant",   # 🔥 IMPORTANT CHANGE
             messages=[
                 {
                     "role": "system",
-                    "content": f"""
-You are an expert agriculture assistant.
-
-- Help farmers with soil, crops, fertilizers, irrigation, pests, and weather.
-- Give simple, practical, and accurate advice.
-- Reply in {data.language} language.
-- Keep answers short and useful.
-"""
+                    "content": "You are an agriculture expert helping farmers."
                 },
                 {
                     "role": "user",
-                    "content": user_message
+                    "content": data.message
                 }
             ],
             temperature=0.7,
+            max_tokens=300
         )
 
         reply = completion.choices[0].message.content.strip()
 
+        print("🤖 REPLY:", reply)
+
         return success({"reply": reply})
 
     except Exception as e:
-        print("❌ CHAT ERROR:", e)
-        return success({
-            "reply": "AI is currently unavailable. Please try again later."
-        })
+        print("❌ GROQ ERROR:", e)   # 🔥 THIS IS KEY
+        return success({"reply": str(e)})  # TEMP DEBUG
