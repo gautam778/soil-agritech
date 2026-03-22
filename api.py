@@ -5,6 +5,7 @@ from datetime import datetime
 
 def register_routes(app, model, groq_client, config, session_data):
 
+    # ---------------- RESPONSE HELPERS ----------------
     def success(data):
         return jsonify({
             "status": "success",
@@ -18,7 +19,7 @@ def register_routes(app, model, groq_client, config, session_data):
             "error": msg
         }), 400
 
-    # ---------------- WEATHER ----------------
+    # ---------------- CURRENT WEATHER ----------------
     def get_weather_data(lat, lon):
         try:
             response = requests.get(
@@ -33,6 +34,7 @@ def register_routes(app, model, groq_client, config, session_data):
             )
 
             if response.status_code != 200:
+                print("Weather API failed:", response.text)
                 return None
 
             data = response.json()
@@ -49,12 +51,53 @@ def register_routes(app, model, groq_client, config, session_data):
             print("WEATHER ERROR:", e)
             return None
 
+    # ---------------- WEEKLY WEATHER ----------------
+    def get_weekly_weather(lat, lon):
+        try:
+            response = requests.get(
+                f"{config.WEATHER_BASE_URL}/onecall",
+                params={
+                    "lat": lat,
+                    "lon": lon,
+                    "exclude": "current,minutely,hourly,alerts",
+                    "appid": config.WEATHER_API_KEY,
+                    "units": "metric"
+                },
+                timeout=3
+            )
+
+            if response.status_code != 200:
+                print("Weekly API failed:", response.text)
+                return []
+
+            data = response.json()
+            daily = data.get("daily", [])[:7]
+
+            forecast = []
+
+            for day in daily:
+                forecast.append({
+                    "date": datetime.fromtimestamp(day["dt"]).strftime("%Y-%m-%d"),
+                    "day": datetime.fromtimestamp(day["dt"]).strftime("%A"),
+                    "temp_day": round(day["temp"]["day"], 1),
+                    "temp_night": round(day["temp"]["night"], 1),
+                    "humidity": day["humidity"],
+                    "condition": day["weather"][0]["description"]
+                })
+
+            return forecast
+
+        except Exception as e:
+            print("WEEKLY ERROR:", e)
+            return []
+
     # ---------------- ROUTES ----------------
 
     @app.route("/health", methods=["GET"])
     def health():
         return success({"message": "API healthy"})
 
+    # 🌱 SOIL PREDICTION
     @app.route("/predict", methods=["POST"])
     def predict_soil():
         if model is None:
@@ -87,6 +130,7 @@ def register_routes(app, model, groq_client, config, session_data):
             print("PREDICT ERROR:", e)
             return success({"microbial_score": 0.5})
 
+    # 🌦 CURRENT WEATHER
     @app.route("/weather-location", methods=["POST"])
     def weather_today():
         data = request.json or {}
@@ -110,6 +154,27 @@ def register_routes(app, model, groq_client, config, session_data):
 
         return success({"weather": weather})
 
+    # 📅 WEEKLY FORECAST
+    @app.route("/weather-weekly", methods=["POST"])
+    def weather_weekly():
+        data = request.json or {}
+
+        lat = data.get("latitude")
+        lon = data.get("longitude")
+
+        if lat is None or lon is None:
+            return error("Latitude & Longitude required")
+
+        forecast = get_weekly_weather(lat, lon)
+
+        if not forecast:
+            forecast = [
+                {"day": "Today", "temp_day": 30, "condition": "clear sky"}
+            ]
+
+        return success({"forecast": forecast})
+
+    # 🤖 CHAT AI
     @app.route("/chat-ai", methods=["POST"])
     def chat_ai():
         data = request.json or {}
@@ -135,7 +200,7 @@ def register_routes(app, model, groq_client, config, session_data):
             print("CHAT ERROR:", e)
             return success({"reply": "AI error"})
 
-    # ---------------- GLOBAL ERROR ----------------
+    # ---------------- GLOBAL ERROR HANDLER ----------------
     @app.errorhandler(Exception)
     def handle_exception(e):
         print("GLOBAL ERROR:", str(e))
