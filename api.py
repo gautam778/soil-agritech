@@ -85,12 +85,25 @@ def predict_soil(data: SoilInput):
 
 # ---------------- WEEKLY WEATHER ----------------
 @app.post("/weather-location")
-def weather_forecast(data: WeatherInput):
+def weather_location(data: WeatherInput):
     try:
         if not WEATHER_API_KEY:
-            return success({"forecast": [], "error": "API key missing"})
+            return success({"forecast": [], "weather": {}})
 
-        res = requests.get(
+        # 🔥 CURRENT WEATHER
+        current_res = requests.get(
+            f"{WEATHER_BASE_URL}/weather",
+            params={
+                "lat": data.latitude,
+                "lon": data.longitude,
+                "appid": WEATHER_API_KEY,
+                "units": "metric"
+            },
+            timeout=5
+        )
+
+        # 🔥 FORECAST
+        forecast_res = requests.get(
             f"{WEATHER_BASE_URL}/forecast",
             params={
                 "lat": data.latitude,
@@ -101,26 +114,41 @@ def weather_forecast(data: WeatherInput):
             timeout=5
         )
 
-        if res.status_code != 200:
-            return success({"forecast": [], "error": "Weather API failed"})
-
-        d = res.json()
+        weather_data = {}
         forecast = []
 
-        for item in d.get("list", []):
-            if "12:00:00" in item["dt_txt"]:  # pick one per day
-                forecast.append({
-                    "date": item["dt_txt"].split(" ")[0],
-                    "temperature": item["main"]["temp"],
-                    "humidity": item["main"]["humidity"],
-                    "condition": item["weather"][0]["description"]
-                })
+        # ✅ CURRENT WEATHER PARSE
+        if current_res.status_code == 200:
+            d = current_res.json()
+            weather_data = {
+                "city": d.get("name"),
+                "temperature": d["main"]["temp"],
+                "humidity": d["main"]["humidity"],
+                "condition": d["weather"][0]["description"],
+                "rainfall": d.get("rain", {}).get("1h", 0.0)
+            }
 
-        return success({"forecast": forecast})
+        # ✅ FORECAST PARSE
+        if forecast_res.status_code == 200:
+            d = forecast_res.json()
+
+            for item in d.get("list", []):
+                if "12:00:00" in item["dt_txt"]:
+                    forecast.append({
+                        "date": item["dt_txt"].split(" ")[0],
+                        "temperature": item["main"]["temp"],
+                        "humidity": item["main"]["humidity"],
+                        "condition": item["weather"][0]["description"]
+                    })
+
+        return success({
+            "weather": weather_data,
+            "forecast": forecast
+        })
 
     except Exception as e:
         print("❌ WEATHER ERROR:", e)
-        return success({"forecast": []})
+        return success({"weather": {}, "forecast": []})
 
 # ---------------- CHAT (GROQ AI) ----------------
 @app.post("/chat-ai")
@@ -157,7 +185,7 @@ Rules:
                 }
             ],
             temperature=0.4,   # 🔥 more consistent replies
-            max_tokens=80      # 🔥 shorter output
+            max_tokens=30      # 🔥 shorter output
         )
 
         reply = completion.choices[0].message.content.strip()
