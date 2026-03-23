@@ -185,7 +185,7 @@ Rules:
                 }
             ],
             temperature=0.4,   # 🔥 more consistent replies
-            max_tokens=30      # 🔥 shorter output
+            max_tokens=300     # 🔥 shorter output
         )
 
         reply = completion.choices[0].message.content.strip()
